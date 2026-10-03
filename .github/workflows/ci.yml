@@ -1,0 +1,34 @@
+name: CI
+
+# Runs on every push and pull request to staging and main. There are no tests
+# yet, so this guards what can break a deploy: lint errors and a failing
+# production build (which also typechecks).
+on:
+  push:
+    branches: [main, staging]
+  pull_request:
+    branches: [main, staging]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    env:
+      DATABASE_URL: mysql://ci:ci@127.0.0.1:3306/agtci_ci
+      AUTH_SECRET: ci-only-secret-not-used-in-production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Production build
+        run: npm run build
