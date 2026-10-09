@@ -16,7 +16,9 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16
+        # The Docker Official Image via AWS's public mirror: pulls from Docker Hub
+        # hit its anonymous rate limit on shared GitHub runners.
+        image: public.ecr.aws/docker/library/postgres:16
         env:
           POSTGRES_USER: ci
           POSTGRES_PASSWORD: ci
