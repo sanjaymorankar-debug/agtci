@@ -1,16 +1,19 @@
 import "dotenv/config";
-import { drizzle } from "drizzle-orm/mysql2";
-import { migrate } from "drizzle-orm/mysql2/migrator";
-import mysql from "mysql2/promise";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { migrate } from "drizzle-orm/node-postgres/migrator";
+import { Pool } from "pg";
 
 async function main() {
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_URL must be set.");
-  const connection = await mysql.createConnection(url);
-  const db = drizzle(connection);
-  await migrate(db, { migrationsFolder: "./drizzle" });
-  console.log("Migrations applied.");
-  await connection.end();
+  const pool = new Pool({ connectionString: url, max: 1 });
+  try {
+    const db = drizzle(pool);
+    await migrate(db, { migrationsFolder: "./drizzle" });
+    console.log("Migrations applied.");
+  } finally {
+    await pool.end();
+  }
 }
 
 main().catch((err) => {
