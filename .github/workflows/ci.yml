@@ -1,8 +1,12 @@
 name: CI
 
-# Runs on every push and pull request to staging and main. There are no tests
-# yet, so this guards what can break a deploy: lint errors and a failing
-# production build (which also typechecks).
+# Runs on every push and pull request to staging and main.
+#
+# Two jobs. `build` guards what can break a deploy without any database: lint
+# errors, a failing production build (which also typechecks), and the tests
+# that need no server. `db-mysql` runs the schema tests against a real MySQL,
+# because those are the ones that catch src/server/db/schema.ts and drizzle/
+# having drifted apart -- which typechecks perfectly and fails at runtime.
 on:
   push:
     branches: [main, staging]
@@ -30,5 +34,58 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # The schema tests skip themselves here: no MySQL service on this job.
+      # What runs is the environment validation, which needs nothing.
+      - name: Tests that need no database
+        run: npm test
+
       - name: Production build
         run: npm run build
+
+  db-mysql:
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        # Matches the local devstack, so a failure here reproduces with
+        # `npm run test:db` rather than only in CI.
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: agtci_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -proot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      TEST_DATABASE_URL: mysql://root:root@127.0.0.1:3306/agtci_test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # No --env-file: the URL is in `env` above, and .env.test is gitignored
+      # so it does not exist in a checkout -- `npm run test:db` would fail on
+      # the missing file.
+      #
+      # The skip check is as much the point as the tests: the schema cases skip
+      # themselves when TEST_DATABASE_URL is unset, so if that env block were
+      # ever dropped this job would stay green while proving nothing.
+      - name: Schema tests on MySQL
+        run: |
+          set -euo pipefail
+          npm test 2>&1 | tee /tmp/schema-tests.txt
+          if grep -q '# SKIP' /tmp/schema-tests.txt; then
+            echo "::error::tests skipped on the MySQL job - TEST_DATABASE_URL is not reaching them"
+            exit 1
+          fi
