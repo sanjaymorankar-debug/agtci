@@ -5,84 +5,93 @@
  * capture (quote requests + custom sourcing requirements), an admin CMS
  * for products/content/certifications, and per-page SEO fields.
  *
- * MySQL (Hostinger-hosted) — IDs are app-generated UUID strings (varchar),
- * since MySQL has no native UUID type/default the way Postgres does.
+ * PostgreSQL — native `uuid` keys (gen_random_uuid()), `text` columns,
+ * enum types, `jsonb` and `timestamptz`.
  */
 import {
   boolean,
   index,
-  int,
-  json,
-  mysqlEnum,
-  mysqlTable,
+  integer,
+  jsonb,
+  pgEnum,
+  pgTable,
   text,
   timestamp,
   uniqueIndex,
-  varchar,
-} from "drizzle-orm/mysql-core";
+  uuid,
+} from "drizzle-orm/pg-core";
 
-const uuidPk = () =>
-  varchar("id", { length: 36 })
-    .primaryKey()
-    .$defaultFn(() => crypto.randomUUID());
+const createdAt = () =>
+  timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
+
+/** Bumped by Drizzle on every UPDATE issued through the ORM. */
+const updatedAt = () =>
+  timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date());
 
 /* ------------------------------------------------------------- admin users */
 
-export const adminUsers = mysqlTable("admin_users", {
-  id: uuidPk(),
-  email: varchar("email", { length: 255 }).notNull(),
-  name: varchar("name", { length: 255 }),
-  passwordHash: varchar("password_hash", { length: 255 }).notNull(),
-  role: mysqlEnum("role", ["ADMIN", "STAFF"]).notNull().default("STAFF"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+export const adminRoleEnum = pgEnum("admin_role", ["ADMIN", "STAFF"]);
+
+export const adminUsers = pgTable("admin_users", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  email: text("email").notNull(),
+  name: text("name"),
+  passwordHash: text("password_hash").notNull(),
+  role: adminRoleEnum("role").notNull().default("STAFF"),
+  createdAt: createdAt(),
 }, (t) => [uniqueIndex("admin_users_email_unique").on(t.email)]);
 
 /* ------------------------------------------------------------- categories */
 
-export const categories = mysqlTable("categories", {
-  id: uuidPk(),
-  name: varchar("name", { length: 255 }).notNull(),
-  slug: varchar("slug", { length: 255 }).notNull(),
+export const categories = pgTable("categories", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  slug: text("slug").notNull(),
+  /** Short description shown on the category grid card. */
   description: text("description"),
-  imageUrl: varchar("image_url", { length: 1000 }),
-  sortOrder: int("sort_order").notNull().default(0),
+  imageUrl: text("image_url"),
+  sortOrder: integer("sort_order").notNull().default(0),
   isActive: boolean("is_active").notNull().default(true),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
 }, (t) => [uniqueIndex("categories_slug_unique").on(t.slug)]);
 
 /* --------------------------------------------------------------- products */
 
-export const products = mysqlTable("products", {
-  id: uuidPk(),
-  categoryId: varchar("category_id", { length: 36 }).notNull().references(() => categories.id, { onDelete: "restrict" }),
-  name: varchar("name", { length: 255 }).notNull(),
-  slug: varchar("slug", { length: 255 }).notNull(),
+export const products = pgTable("products", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  categoryId: uuid("category_id").notNull().references(() => categories.id, { onDelete: "restrict" }),
+  name: text("name").notNull(),
+  slug: text("slug").notNull(),
   shortDescription: text("short_description"),
   description: text("description"),
   /** ["url1", "url2", ...] — first image is the primary/card image. */
-  images: json("images").$type<string[]>().notNull().default([]),
-  origin: varchar("origin", { length: 255 }),
-  grades: json("grades").$type<string[]>().notNull().default([]),
-  packagingOptions: json("packaging_options").$type<string[]>().notNull().default([]),
-  moq: varchar("moq", { length: 255 }),
+  images: jsonb("images").$type<string[]>().notNull().default([]),
+  origin: text("origin"),
+  /** Free-form list, e.g. ["Grade A", "Grade B"]. */
+  grades: jsonb("grades").$type<string[]>().notNull().default([]),
+  packagingOptions: jsonb("packaging_options").$type<string[]>().notNull().default([]),
+  moq: text("moq"),
   supplyCapability: text("supply_capability"),
   exportAvailable: boolean("export_available").notNull().default(true),
   /** Free-form key/value spec sheet: [{label, value}]. */
-  specifications: json("specifications").$type<{ label: string; value: string }[]>().notNull().default([]),
+  specifications: jsonb("specifications").$type<{ label: string; value: string }[]>().notNull().default([]),
   /** Certification slugs that apply to this product — must also be enabled globally. */
-  certifications: json("certifications").$type<string[]>().notNull().default([]),
+  certifications: jsonb("certifications").$type<string[]>().notNull().default([]),
   isFeatured: boolean("is_featured").notNull().default(false),
   isActive: boolean("is_active").notNull().default(true),
-  sortOrder: int("sort_order").notNull().default(0),
+  sortOrder: integer("sort_order").notNull().default(0),
 
-  seoTitle: varchar("seo_title", { length: 255 }),
-  seoDescription: varchar("seo_description", { length: 500 }),
-  seoKeywords: varchar("seo_keywords", { length: 500 }),
-  ogImageUrl: varchar("og_image_url", { length: 1000 }),
+  seoTitle: text("seo_title"),
+  seoDescription: text("seo_description"),
+  seoKeywords: text("seo_keywords"),
+  ogImageUrl: text("og_image_url"),
 
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
 }, (t) => [
   uniqueIndex("products_slug_unique").on(t.slug),
   index("products_category_idx").on(t.categoryId),
@@ -110,38 +119,41 @@ export const LEAD_SOURCES = [
   "CONTACT_FORM",
 ] as const;
 
-export const leads = mysqlTable("leads", {
-  id: uuidPk(),
-  source: mysqlEnum("source", LEAD_SOURCES).notNull(),
-  status: mysqlEnum("status", LEAD_STATUSES).notNull().default("NEW"),
+export const leadStatusEnum = pgEnum("lead_status", LEAD_STATUSES);
+export const leadSourceEnum = pgEnum("lead_source", LEAD_SOURCES);
 
-  fullName: varchar("full_name", { length: 255 }).notNull(),
-  companyName: varchar("company_name", { length: 255 }),
-  country: varchar("country", { length: 100 }),
-  email: varchar("email", { length: 255 }).notNull(),
-  phone: varchar("phone", { length: 50 }),
+export const leads = pgTable("leads", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  source: leadSourceEnum("source").notNull(),
+  status: leadStatusEnum("status").notNull().default("NEW"),
 
-  productId: varchar("product_id", { length: 36 }).references(() => products.id, { onDelete: "set null" }),
+  fullName: text("full_name").notNull(),
+  companyName: text("company_name"),
+  country: text("country"),
+  email: text("email").notNull(),
+  phone: text("phone"),
+
+  productId: uuid("product_id").references(() => products.id, { onDelete: "set null" }),
   /** Snapshot so a lead stays readable even if the product is later renamed/removed. */
-  productNameSnapshot: varchar("product_name_snapshot", { length: 255 }),
+  productNameSnapshot: text("product_name_snapshot"),
 
-  quantity: varchar("quantity", { length: 255 }),
+  quantity: text("quantity"),
   specification: text("specification"),
   qualityRequirement: text("quality_requirement"),
-  packaging: varchar("packaging", { length: 255 }),
-  destinationCountry: varchar("destination_country", { length: 100 }),
-  targetPrice: varchar("target_price", { length: 255 }),
-  deliveryTimeline: varchar("delivery_timeline", { length: 255 }),
+  packaging: text("packaging"),
+  destinationCountry: text("destination_country"),
+  targetPrice: text("target_price"),
+  deliveryTimeline: text("delivery_timeline"),
   additionalInfo: text("additional_info"),
   /** ["url1", ...] — uploaded reference files/specs. */
-  attachments: json("attachments").$type<string[]>().notNull().default([]),
+  attachments: jsonb("attachments").$type<string[]>().notNull().default([]),
 
-  assignedTo: varchar("assigned_to", { length: 36 }).references(() => adminUsers.id, { onDelete: "set null" }),
+  assignedTo: uuid("assigned_to").references(() => adminUsers.id, { onDelete: "set null" }),
   notes: text("notes"),
-  followUpDate: timestamp("follow_up_date"),
+  followUpDate: timestamp("follow_up_date", { withTimezone: true }),
 
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
 }, (t) => [
   index("leads_status_idx").on(t.status),
   index("leads_source_idx").on(t.source),
@@ -155,24 +167,24 @@ export const leads = mysqlTable("leads", {
  * unless explicitly enabled here, per the brief's "never invent/never
  * display an unheld certification" rule.
  */
-export const certifications = mysqlTable("certifications", {
-  id: uuidPk(),
-  slug: varchar("slug", { length: 100 }).notNull(),
-  name: varchar("name", { length: 255 }).notNull(),
+export const certifications = pgTable("certifications", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  slug: text("slug").notNull(),
+  name: text("name").notNull(),
   description: text("description"),
   isEnabled: boolean("is_enabled").notNull().default(false),
-  sortOrder: int("sort_order").notNull().default(0),
+  sortOrder: integer("sort_order").notNull().default(0),
 }, (t) => [uniqueIndex("certifications_slug_unique").on(t.slug)]);
 
 /* --------------------------------------------------------------- services */
 
-export const services = mysqlTable("services", {
-  id: uuidPk(),
-  title: varchar("title", { length: 255 }).notNull(),
-  slug: varchar("slug", { length: 255 }).notNull(),
+export const services = pgTable("services", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  title: text("title").notNull(),
+  slug: text("slug").notNull(),
   description: text("description"),
-  icon: varchar("icon", { length: 100 }),
-  sortOrder: int("sort_order").notNull().default(0),
+  icon: text("icon"),
+  sortOrder: integer("sort_order").notNull().default(0),
   isActive: boolean("is_active").notNull().default(true),
 }, (t) => [uniqueIndex("services_slug_unique").on(t.slug)]);
 
@@ -183,24 +195,24 @@ export const services = mysqlTable("services", {
  * details, WhatsApp number, social links, ...), keyed so the admin panel
  * can edit each block without a schema change per field.
  */
-export const siteContent = mysqlTable("site_content", {
-  key: varchar("key", { length: 100 }).primaryKey(),
+export const siteContent = pgTable("site_content", {
+  key: text("key").primaryKey(),
   /** Arbitrary JSON payload — shape depends on the key (see site-content.ts). */
-  value: json("value").notNull(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+  value: jsonb("value").notNull(),
+  updatedAt: updatedAt(),
 });
 
 /* ------------------------------------------------------------- audit log */
 
-export const auditLogs = mysqlTable("audit_logs", {
-  id: uuidPk(),
-  actorId: varchar("actor_id", { length: 36 }).references(() => adminUsers.id),
-  action: varchar("action", { length: 255 }).notNull(),
-  entityType: varchar("entity_type", { length: 100 }).notNull(),
-  entityId: varchar("entity_id", { length: 255 }),
-  previousValue: json("previous_value"),
-  newValue: json("new_value"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+export const auditLogs = pgTable("audit_logs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  actorId: uuid("actor_id").references(() => adminUsers.id),
+  action: text("action").notNull(),
+  entityType: text("entity_type").notNull(),
+  entityId: text("entity_id"),
+  previousValue: jsonb("previous_value"),
+  newValue: jsonb("new_value"),
+  createdAt: createdAt(),
 }, (t) => [index("audit_logs_entity_idx").on(t.entityType, t.entityId)]);
 
 /* ------------------------------------------------------------------ types */
