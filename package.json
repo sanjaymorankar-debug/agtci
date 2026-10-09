@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx src/server/db/migrate.ts"
+    "db:migrate": "tsx src/server/db/migrate.ts",
+    "test": "node --import tsx --test --test-concurrency=1 tests/*.test.mts",
+    "typecheck": "next typegen && tsc --noEmit"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.3",

@@ -14,6 +14,17 @@ const serverEnvSchema = z.object({
 
   // WhatsApp click-to-chat number, digits only with country code (e.g. 91XXXXXXXXXX).
   WHATSAPP_NUMBER: z.string().optional(),
+
+  // Sign-in for the client area, through bkesari.com (OpenID Connect; see
+  // src/server/sso). All three OIDC_* unset = no sign-in, public pages only.
+  // The issuer is the bkesari.com tier this tier pairs with:
+  //   dev.agtci.com -> https://dev.bkesari.com/auth, agtci.com -> https://bkesari.com/auth
+  OIDC_ISSUER: z.string().url().optional(),
+  OIDC_CLIENT_ID: z.string().optional(),
+  OIDC_CLIENT_SECRET: z.string().optional(),
+  // This site's own origin, e.g. https://dev.agtci.com. The redirect URI is
+  // <AGTCI_URL>/auth/callback and must be registered exactly on bkesari.com.
+  AGTCI_URL: z.string().url().optional(),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;

@@ -1,8 +1,8 @@
 name: CI
 
-# Runs on every push and pull request to staging and main. There are no tests
-# yet, so this guards what can break a deploy: lint errors and a failing
-# production build (which also typechecks).
+# Runs on every push and pull request to staging and main: lint, the tests
+# (against a real MySQL, like production), and a production build (which also
+# typechecks).
 on:
   push:
     branches: [main, staging]
@@ -13,8 +13,22 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: agtci_test
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
     env:
-      DATABASE_URL: mysql://ci:ci@127.0.0.1:3306/agtci_ci
+      DATABASE_URL: mysql://root:root@127.0.0.1:3306/agtci_test
+      TEST_DATABASE_URL: mysql://root:root@127.0.0.1:3306/agtci_test
       AUTH_SECRET: ci-only-secret-not-used-in-production
 
     steps:
@@ -29,6 +43,12 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+      - name: Apply migrations
+        run: npm run db:migrate
+
+      - name: Tests
+        run: npm test
 
       - name: Production build
         run: npm run build
