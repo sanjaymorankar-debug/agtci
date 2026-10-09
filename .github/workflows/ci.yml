@@ -1,8 +1,9 @@
 name: CI
 
 # Runs on every push and pull request to staging and main. There are no tests
-# yet, so this guards what can break a deploy: lint errors and a failing
-# production build (which also typechecks).
+# yet, so this guards what can break a deploy: migrations that don't apply to a
+# fresh PostgreSQL database, a schema that has drifted from its migrations,
+# lint/type errors, and a failing production build.
 on:
   push:
     branches: [main, staging]
@@ -13,8 +14,23 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: agtci_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d agtci_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     env:
-      DATABASE_URL: mysql://ci:ci@127.0.0.1:3306/agtci_ci
+      DATABASE_URL: postgres://ci:ci@127.0.0.1:5432/agtci_ci
       AUTH_SECRET: ci-only-secret-not-used-in-production
 
     steps:
@@ -27,8 +43,23 @@ jobs:
 
       - run: npm ci
 
+      - name: Apply migrations to a fresh database
+        run: npm run db:migrate
+
+      - name: Schema and migrations are in sync
+        run: |
+          npx drizzle-kit generate
+          if [ -n "$(git status --porcelain drizzle)" ]; then
+            echo "src/server/db/schema.ts has changes with no migration. Run 'npm run db:generate' and commit the result."
+            git status --porcelain drizzle
+            exit 1
+          fi
+
       - name: Lint
         run: npm run lint
+
+      - name: Typecheck
+        run: npx next typegen && npx tsc --noEmit
 
       - name: Production build
         run: npm run build
