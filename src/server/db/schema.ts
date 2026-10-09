@@ -203,6 +203,36 @@ export const auditLogs = mysqlTable("audit_logs", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (t) => [index("audit_logs_entity_idx").on(t.entityType, t.entityId)]);
 
+/* ------------------------------------------------------------ sso sessions */
+
+/**
+ * Sessions for the client area, created after signing in at bkesari.com
+ * (OpenID Connect, src/server/sso). Identity lives at bkesari.com; this only
+ * remembers who is signed in here and what they may do.
+ *
+ * `id` is the SHA-256 of the cookie value, so a database leak gives no
+ * usable cookie. `sid` is the bkesari.com session: back-channel logout
+ * deletes every row with it. `accessToken` is encrypted (AES-256-GCM).
+ */
+export const ssoSessions = mysqlTable("sso_sessions", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  sid: varchar("sid", { length: 64 }).notNull(),
+  sub: varchar("sub", { length: 64 }).notNull(),
+  email: varchar("email", { length: 255 }).notNull(),
+  name: varchar("name", { length: 255 }),
+  entitled: boolean("entitled").notNull().default(false),
+  /** agtci.* permissions from bkesari.com, e.g. ["agtci.view_client_area"]. */
+  permissions: json("permissions").$type<string[]>().notNull().default([]),
+  accessTokenEnc: text("access_token_enc").notNull(),
+  idToken: text("id_token").notNull(),
+  checkedAt: timestamp("checked_at").notNull().defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => [
+  index("sso_sessions_sid_idx").on(t.sid),
+  index("sso_sessions_sub_idx").on(t.sub),
+]);
+
 /* ------------------------------------------------------------------ types */
 
 export type AdminUser = typeof adminUsers.$inferSelect;
@@ -213,4 +243,5 @@ export type LeadStatus = (typeof LEAD_STATUSES)[number];
 export type LeadSource = (typeof LEAD_SOURCES)[number];
 export type Certification = typeof certifications.$inferSelect;
 export type Service = typeof services.$inferSelect;
+export type SsoSession = typeof ssoSessions.$inferSelect;
 export type SiteContentRow = typeof siteContent.$inferSelect;

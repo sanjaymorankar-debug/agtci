@@ -8,6 +8,13 @@
       "when": 1788364704869,
       "tag": "0000_curvy_mentallo",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1791573822970,
+      "tag": "0001_sso_sessions",
+      "breakpoints": true
     }
   ]
 }
