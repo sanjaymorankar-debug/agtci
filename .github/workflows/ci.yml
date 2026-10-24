@@ -1,9 +1,12 @@
 name: CI
 
-# Runs on every push and pull request to staging and main. There are no tests
-# yet, so this guards what can break a deploy: database migrations that don't
-# apply cleanly to PostgreSQL, lint errors and a failing production build
-# (which also typechecks).
+# Runs on every push and pull request to staging and main: the standard suite
+# from TEST_SPEC.md that needs no hosted service. Lint, typecheck, the
+# database checks (migrations apply to an empty PostgreSQL and match
+# schema.ts), the production build and a smoke run of it.
+#
+# The database is the PostgreSQL 16 service below. CI never connects to Neon,
+# and no Neon URL or secret belongs in this file.
 on:
   push:
     branches: [main, staging]
@@ -48,11 +51,22 @@ jobs:
 
       - run: npm ci
 
-      - name: Apply database migrations
-        run: npm run db:migrate
-
       - name: Lint
         run: npm run lint
 
+      # LayoutProps and the other route types are generated, not committed.
+      - name: Typecheck
+        run: npx next typegen && npx tsc --noEmit
+
+      # Applies the migrations to the empty service database (twice), compares
+      # the result with schema.ts and the snapshot, and runs the behaviour probes.
+      - name: Database checks
+        run: node scripts/db-check.mjs
+
+      # Without the database settings: nothing may connect to a database at
+      # build time (the pool is created on the first request).
       - name: Production build
-        run: npm run build
+        run: env -u DATABASE_URL -u AUTH_SECRET npm run build
+
+      - name: Smoke run
+        run: node scripts/smoke.mjs --terminate
