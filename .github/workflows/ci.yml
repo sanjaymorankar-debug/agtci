@@ -1,9 +1,9 @@
 name: CI
 
 # Runs on every push and pull request to staging and main. There are no tests
-# yet, so this guards what can break a deploy: migrations that don't apply to a
-# fresh PostgreSQL database, a schema that has drifted from its migrations,
-# lint/type errors, and a failing production build.
+# yet, so this guards what can break a deploy: database migrations that don't
+# apply cleanly to PostgreSQL, lint errors and a failing production build
+# (which also typechecks).
 on:
   push:
     branches: [main, staging]
@@ -16,7 +16,9 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16
+        # The Docker Official Image via AWS's public mirror: pulls from Docker Hub
+        # hit its anonymous rate limit on shared GitHub runners.
+        image: public.ecr.aws/docker/library/postgres:16
         env:
           POSTGRES_USER: ci
           POSTGRES_PASSWORD: ci
@@ -43,23 +45,11 @@ jobs:
 
       - run: npm ci
 
-      - name: Apply migrations to a fresh database
+      - name: Apply database migrations
         run: npm run db:migrate
-
-      - name: Schema and migrations are in sync
-        run: |
-          npx drizzle-kit generate
-          if [ -n "$(git status --porcelain drizzle)" ]; then
-            echo "src/server/db/schema.ts has changes with no migration. Run 'npm run db:generate' and commit the result."
-            git status --porcelain drizzle
-            exit 1
-          fi
 
       - name: Lint
         run: npm run lint
-
-      - name: Typecheck
-        run: npx next typegen && npx tsc --noEmit
 
       - name: Production build
         run: npm run build

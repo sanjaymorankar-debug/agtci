@@ -5,9 +5,16 @@
  * capture (quote requests + custom sourcing requirements), an admin CMS
  * for products/content/certifications, and per-page SEO fields.
  *
- * PostgreSQL — native `uuid` keys (gen_random_uuid()), `text` columns,
- * enum types, `jsonb` and `timestamptz`.
+ * PostgreSQL — IDs are native `uuid` columns defaulting to
+ * gen_random_uuid() (built in since PostgreSQL 13), timestamps are
+ * `timestamptz`, and JSON payloads are `jsonb`.
+ *
+ * `updated_at` columns are bumped two ways: Drizzle's `$onUpdate` sets them
+ * on every ORM update, and a `set_updated_at` trigger (see the custom
+ * migration in ./drizzle) does the same for any other UPDATE, matching
+ * MySQL's former `ON UPDATE CURRENT_TIMESTAMP` behaviour.
  */
+import { sql } from "drizzle-orm";
 import {
   boolean,
   index,
@@ -19,12 +26,13 @@ import {
   timestamp,
   uniqueIndex,
   uuid,
+  varchar,
 } from "drizzle-orm/pg-core";
 
-const createdAt = () =>
-  timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
+const uuidPk = () => uuid("id").primaryKey().defaultRandom();
 
-/** Bumped by Drizzle on every UPDATE issued through the ORM. */
+const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
+
 const updatedAt = () =>
   timestamp("updated_at", { withTimezone: true })
     .notNull()
@@ -33,26 +41,29 @@ const updatedAt = () =>
 
 /* ------------------------------------------------------------- admin users */
 
-export const adminRoleEnum = pgEnum("admin_role", ["ADMIN", "STAFF"]);
+export const ADMIN_ROLES = ["ADMIN", "STAFF"] as const;
+export const adminRoleEnum = pgEnum("admin_role", ADMIN_ROLES);
 
 export const adminUsers = pgTable("admin_users", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  email: text("email").notNull(),
-  name: text("name"),
-  passwordHash: text("password_hash").notNull(),
+  id: uuidPk(),
+  email: varchar("email", { length: 255 }).notNull(),
+  name: varchar("name", { length: 255 }),
+  passwordHash: varchar("password_hash", { length: 255 }).notNull(),
   role: adminRoleEnum("role").notNull().default("STAFF"),
   createdAt: createdAt(),
-}, (t) => [uniqueIndex("admin_users_email_unique").on(t.email)]);
+}, (t) => [
+  // Case-insensitive, like the default MySQL collation this replaced.
+  uniqueIndex("admin_users_email_unique").on(sql`lower(${t.email})`),
+]);
 
 /* ------------------------------------------------------------- categories */
 
 export const categories = pgTable("categories", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  name: text("name").notNull(),
-  slug: text("slug").notNull(),
-  /** Short description shown on the category grid card. */
+  id: uuidPk(),
+  name: varchar("name", { length: 255 }).notNull(),
+  slug: varchar("slug", { length: 255 }).notNull(),
   description: text("description"),
-  imageUrl: text("image_url"),
+  imageUrl: varchar("image_url", { length: 1000 }),
   sortOrder: integer("sort_order").notNull().default(0),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: createdAt(),
@@ -62,19 +73,18 @@ export const categories = pgTable("categories", {
 /* --------------------------------------------------------------- products */
 
 export const products = pgTable("products", {
-  id: uuid("id").primaryKey().defaultRandom(),
+  id: uuidPk(),
   categoryId: uuid("category_id").notNull().references(() => categories.id, { onDelete: "restrict" }),
-  name: text("name").notNull(),
-  slug: text("slug").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  slug: varchar("slug", { length: 255 }).notNull(),
   shortDescription: text("short_description"),
   description: text("description"),
   /** ["url1", "url2", ...] — first image is the primary/card image. */
   images: jsonb("images").$type<string[]>().notNull().default([]),
-  origin: text("origin"),
-  /** Free-form list, e.g. ["Grade A", "Grade B"]. */
+  origin: varchar("origin", { length: 255 }),
   grades: jsonb("grades").$type<string[]>().notNull().default([]),
   packagingOptions: jsonb("packaging_options").$type<string[]>().notNull().default([]),
-  moq: text("moq"),
+  moq: varchar("moq", { length: 255 }),
   supplyCapability: text("supply_capability"),
   exportAvailable: boolean("export_available").notNull().default(true),
   /** Free-form key/value spec sheet: [{label, value}]. */
@@ -85,10 +95,10 @@ export const products = pgTable("products", {
   isActive: boolean("is_active").notNull().default(true),
   sortOrder: integer("sort_order").notNull().default(0),
 
-  seoTitle: text("seo_title"),
-  seoDescription: text("seo_description"),
-  seoKeywords: text("seo_keywords"),
-  ogImageUrl: text("og_image_url"),
+  seoTitle: varchar("seo_title", { length: 255 }),
+  seoDescription: varchar("seo_description", { length: 500 }),
+  seoKeywords: varchar("seo_keywords", { length: 500 }),
+  ogImageUrl: varchar("og_image_url", { length: 1000 }),
 
   createdAt: createdAt(),
   updatedAt: updatedAt(),
@@ -123,27 +133,27 @@ export const leadStatusEnum = pgEnum("lead_status", LEAD_STATUSES);
 export const leadSourceEnum = pgEnum("lead_source", LEAD_SOURCES);
 
 export const leads = pgTable("leads", {
-  id: uuid("id").primaryKey().defaultRandom(),
+  id: uuidPk(),
   source: leadSourceEnum("source").notNull(),
   status: leadStatusEnum("status").notNull().default("NEW"),
 
-  fullName: text("full_name").notNull(),
-  companyName: text("company_name"),
-  country: text("country"),
-  email: text("email").notNull(),
-  phone: text("phone"),
+  fullName: varchar("full_name", { length: 255 }).notNull(),
+  companyName: varchar("company_name", { length: 255 }),
+  country: varchar("country", { length: 100 }),
+  email: varchar("email", { length: 255 }).notNull(),
+  phone: varchar("phone", { length: 50 }),
 
   productId: uuid("product_id").references(() => products.id, { onDelete: "set null" }),
   /** Snapshot so a lead stays readable even if the product is later renamed/removed. */
-  productNameSnapshot: text("product_name_snapshot"),
+  productNameSnapshot: varchar("product_name_snapshot", { length: 255 }),
 
-  quantity: text("quantity"),
+  quantity: varchar("quantity", { length: 255 }),
   specification: text("specification"),
   qualityRequirement: text("quality_requirement"),
-  packaging: text("packaging"),
-  destinationCountry: text("destination_country"),
-  targetPrice: text("target_price"),
-  deliveryTimeline: text("delivery_timeline"),
+  packaging: varchar("packaging", { length: 255 }),
+  destinationCountry: varchar("destination_country", { length: 100 }),
+  targetPrice: varchar("target_price", { length: 255 }),
+  deliveryTimeline: varchar("delivery_timeline", { length: 255 }),
   additionalInfo: text("additional_info"),
   /** ["url1", ...] — uploaded reference files/specs. */
   attachments: jsonb("attachments").$type<string[]>().notNull().default([]),
@@ -158,6 +168,9 @@ export const leads = pgTable("leads", {
   index("leads_status_idx").on(t.status),
   index("leads_source_idx").on(t.source),
   index("leads_created_idx").on(t.createdAt),
+  // MySQL/InnoDB indexed FK columns implicitly; PostgreSQL does not.
+  index("leads_product_idx").on(t.productId),
+  index("leads_assigned_to_idx").on(t.assignedTo),
 ]);
 
 /* ------------------------------------------------------------ certifications */
@@ -168,9 +181,9 @@ export const leads = pgTable("leads", {
  * display an unheld certification" rule.
  */
 export const certifications = pgTable("certifications", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  slug: text("slug").notNull(),
-  name: text("name").notNull(),
+  id: uuidPk(),
+  slug: varchar("slug", { length: 100 }).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
   description: text("description"),
   isEnabled: boolean("is_enabled").notNull().default(false),
   sortOrder: integer("sort_order").notNull().default(0),
@@ -179,11 +192,11 @@ export const certifications = pgTable("certifications", {
 /* --------------------------------------------------------------- services */
 
 export const services = pgTable("services", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  title: text("title").notNull(),
-  slug: text("slug").notNull(),
+  id: uuidPk(),
+  title: varchar("title", { length: 255 }).notNull(),
+  slug: varchar("slug", { length: 255 }).notNull(),
   description: text("description"),
-  icon: text("icon"),
+  icon: varchar("icon", { length: 100 }),
   sortOrder: integer("sort_order").notNull().default(0),
   isActive: boolean("is_active").notNull().default(true),
 }, (t) => [uniqueIndex("services_slug_unique").on(t.slug)]);
@@ -196,7 +209,7 @@ export const services = pgTable("services", {
  * can edit each block without a schema change per field.
  */
 export const siteContent = pgTable("site_content", {
-  key: text("key").primaryKey(),
+  key: varchar("key", { length: 100 }).primaryKey(),
   /** Arbitrary JSON payload — shape depends on the key (see site-content.ts). */
   value: jsonb("value").notNull(),
   updatedAt: updatedAt(),
@@ -205,18 +218,22 @@ export const siteContent = pgTable("site_content", {
 /* ------------------------------------------------------------- audit log */
 
 export const auditLogs = pgTable("audit_logs", {
-  id: uuid("id").primaryKey().defaultRandom(),
+  id: uuidPk(),
   actorId: uuid("actor_id").references(() => adminUsers.id),
-  action: text("action").notNull(),
-  entityType: text("entity_type").notNull(),
-  entityId: text("entity_id"),
+  action: varchar("action", { length: 255 }).notNull(),
+  entityType: varchar("entity_type", { length: 100 }).notNull(),
+  entityId: varchar("entity_id", { length: 255 }),
   previousValue: jsonb("previous_value"),
   newValue: jsonb("new_value"),
   createdAt: createdAt(),
-}, (t) => [index("audit_logs_entity_idx").on(t.entityType, t.entityId)]);
+}, (t) => [
+  index("audit_logs_entity_idx").on(t.entityType, t.entityId),
+  index("audit_logs_actor_idx").on(t.actorId),
+]);
 
 /* ------------------------------------------------------------------ types */
 
+export type AdminRole = (typeof ADMIN_ROLES)[number];
 export type AdminUser = typeof adminUsers.$inferSelect;
 export type Category = typeof categories.$inferSelect;
 export type Product = typeof products.$inferSelect;
