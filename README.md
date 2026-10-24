@@ -49,7 +49,7 @@ After changing `schema.ts`, run `npm run db:generate` to create a new migration,
 
 ### Neon
 
-agtci.com is a separate site from bkesari.com, but its database lives in the same Neon project: its own database `bk_agtci`, owned by its own role `bk_agtci_app`, on every Neon branch (bkesari-platform's `docs/NEON.md` and `tools/neon_provision.mjs` create them). The role is a member of `neon_superuser`, so it can run the migrations without a superuser.
+agtci.com is a separate site from bkesari.com. Its database has a Neon project of its own, `bkesari-agtci` (Singapore), with a `production`, `test` and `dev` branch: its own database `bk_agtci`, owned by its own role `bk_agtci_app`, on every Neon branch (bkesari-platform's `docs/NEON.md` and `tools/neon_provision.mjs` create them). The role is a member of `neon_superuser`, so it can run the migrations without a superuser.
 
 | Neon branch | Site | Git branch |
 |---|---|---|
