@@ -46,6 +46,70 @@ The easiest way to deploy your Next.js app is to use the [Vercel Platform](https
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
 
+## Configuration
+
+`src/lib/env.ts` validates the environment once at startup and refuses to run
+without `DATABASE_URL` and `AUTH_SECRET`, so a missing value stops the process
+immediately rather than surfacing later as a connection error mid-request.
+
+```bash
+cp .env.example .env.local      # then fill in a real AUTH_SECRET
+npm run db:migrate              # applies drizzle/ to that database
+```
+
+## Tests
+
+```bash
+npm test        # 17 tests; no database needed, the 10 schema tests skip
+npm run lint
+```
+
+`npm test` works on a fresh clone. The environment-validation tests need
+nothing; the schema tests skip themselves with a reason.
+
+To run those too, point them at a throwaway PostgreSQL:
+
+```bash
+cp .env.test.example .env.test  # defaults match the local devstack
+npm run test:db                 # all 17, nothing skipped
+```
+
+### What these cover that CI's schema steps do not
+
+CI already applies the migrations to a fresh database and runs `drizzle-kit
+generate`, failing if that produces a diff. Between them those prove the
+migrations apply and that `src/server/db/schema.ts` has not drifted from them.
+Both compare files and DDL; neither runs a query.
+
+The tests add what that leaves out — that the ORM can read and write every
+table against the migrated database, that the defaults and constraints
+declared in the schema exist in it rather than only in TypeScript, and that
+the enum types refuse a value outside their list. A column renamed in the
+schema and regenerated correctly satisfies both CI checks and still breaks
+every query naming the old one.
+
+Two are PostgreSQL-specific:
+
+- **`timestamptz` keeps the instant across a session time-zone change.** Only
+  the rendered text moves (`+05:30` under `Asia/Kolkata`). That is the whole
+  point of `withTimezone: true`, and swapping the column to a naive
+  `timestamp` is caught by this test and no other.
+- **The enum columns are real named types, not text.** Replace one with a
+  plain `text` column and every other test still passes — the ORM accepts the
+  same values — while the database quietly stops refusing bad ones.
+
+> `TEST_DATABASE_URL`, deliberately not `DATABASE_URL`: these tests
+> **`DROP SCHEMA public CASCADE`** on whatever they are pointed at. They must
+> not be able to pick up a development database by accident.
+
+Resetting that database drops the `drizzle` schema as well as `public`: the
+`pgEnum` types outlive their tables, so the next `CREATE TYPE` would fail, and
+drizzle records applied migrations outside `public` so leaving it would make
+`migrate()` decide there is nothing to do.
+
+The test setup adds no dependencies: Node's own test runner, loaded through the
+`tsx` that `db:migrate` already uses.
+
 ## Branches and promotion
 
 | Branch | Environment |

@@ -1,9 +1,15 @@
 name: CI
 
-# Runs on every push and pull request to staging and main. There are no tests
-# yet, so this guards what can break a deploy: migrations that don't apply to a
-# fresh PostgreSQL database, a schema that has drifted from its migrations,
-# lint/type errors, and a failing production build.
+# Runs on every push and pull request to staging and main. One job, because the
+# PostgreSQL service it already needs for the migration steps is the same one
+# the tests need.
+#
+# The migrate + drizzle-kit drift steps below are the schema guard: they prove
+# the migrations apply to an empty database and that src/server/db/schema.ts has
+# not drifted from them. The tests add what those two cannot see -- that the ORM
+# can actually read and write every table against the migrated database, that
+# the defaults and constraints declared in the schema exist in it, and that the
+# environment validation refuses a bad configuration.
 on:
   push:
     branches: [main, staging]
@@ -32,6 +38,10 @@ jobs:
     env:
       DATABASE_URL: postgres://ci:ci@127.0.0.1:5432/agtci_ci
       AUTH_SECRET: ci-only-secret-not-used-in-production
+      # The schema tests read this, deliberately not DATABASE_URL: they drop
+      # every table in whatever they are pointed at. Same database here because
+      # CI's is disposable; locally the two must differ.
+      TEST_DATABASE_URL: postgres://ci:ci@127.0.0.1:5432/agtci_ci
 
     steps:
       - uses: actions/checkout@v4
@@ -54,6 +64,9 @@ jobs:
             git status --porcelain drizzle
             exit 1
           fi
+
+      - name: Tests
+        run: npm test
 
       - name: Lint
         run: npm run lint
