@@ -23,7 +23,7 @@ asking Claude to "run the agtci-tester agent".
 
 | Component | Path | Language / framework |
 |---|---|---|
-| Pages and layout | `src/app/layout.tsx`, `src/app/page.tsx`, `src/app/globals.css`, `public/` | React 19, Next.js 16.3 (App Router, Turbopack), Tailwind 4 |
+| Pages and layout | `src/app/layout.tsx`, `src/app/page.tsx`, `src/app/globals.css`, `public/` | React 19, Next.js 16.4 (App Router, Turbopack), Tailwind 4 |
 | Health route | `src/app/api/health/route.ts` | Next.js route handler |
 | Database schema | `src/server/db/schema.ts` | Drizzle ORM 0.45 (pg-core) |
 | Migrations | `drizzle/*.sql`, `drizzle/meta/`, `drizzle.config.ts`, `src/server/db/migrate.ts` | drizzle-kit 0.31, SQL (PostgreSQL 13+) |
@@ -57,9 +57,11 @@ PostgreSQL 16.15.
 owned by a scratch role that is **not** a superuser. **They are dropped and
 recreated by this suite. Never point it at a database you care about.** Both
 scripts refuse any host other than `127.0.0.1`, `localhost` or `::1`.
-`db-check.mjs`, which migrates the database it is given, also refuses a
-database named `agtci` or `bk_agtci` (the Neon name), and names ending in
-`_dev`, `_test`, `_prod` or `_production`.
+Both also refuse a database named `agtci` or `bk_agtci` (the Neon name), and
+names ending in `_dev`, `_test`, `_prod` or `_production`: `db-check.mjs`
+migrates the database it is given, and `smoke.mjs --terminate` kills the
+role's other sessions on it. `smoke.mjs` checks `DATABASE_URL` and
+`DATABASE_URL_UNPOOLED` alike.
 
 | Name (Mac) | Used by | Note |
 |---|---|---|
@@ -136,7 +138,11 @@ direct 127.0.0.1:5432, pooled 127.0.0.1:6432, CA bundle
    - `server_tls_sslmode = require`
    - `auth_type = scram-sha-256`, with an `auth_query` or an `auth_file`
      listing `agtci_scratch`
-3. Export `NODE_EXTRA_CA_CERTS=<your CA .crt>`. Never add a CA path or
+3. Export `NODE_EXTRA_CA_CERTS=<your CA .crt>`, and run N with no
+   `NODE_OPTIONS=--use-openssl-ca`: that makes Node trust the whole system
+   store, so TLS-02 ("refused without the local CA") cannot hold. The direct
+   endpoint's certificate must come from the local CA, not a system-trusted
+   one such as Ubuntu's snakeoil. Never add a CA path or
    `rejectUnauthorized: false` to app code: Neon's certificate comes from a
    public CA.
 
@@ -241,7 +247,7 @@ a count.
 | No real credential in a URL | `git grep --untracked -nIE "postgres(ql)?://[^:/ ]+:[^@ ]+@" -- . ':!package-lock.json' \| grep -vE "@(127\.0\.0\.1\|localhost)[:/]\|<password>"` | prints nothing (only local placeholders and `<password>` remain) |
 | Nothing private served, nothing leaked | SM-02, SM-07, SM-08, SM-09, SM-10 from rows 8 and 9 | all `ok` |
 | Protected routes refuse anonymous access | none exist yet (no admin or auth routes) | `N/A`. Becomes mandatory with the first admin route |
-| Dependency audit | `npm audit --omit=dev` | report-only. Baseline: 4 advisories (1 critical `next`, 3 high: `zod`, `sharp`, `source-map-js`). Report any advisory not in that list |
+| Dependency audit | `npm audit --omit=dev` | report-only. Baseline: 0 advisories (since `next` 16.4.3 and `npm audit fix`). Report any advisory. The full `npm audit` (dev dependencies too) has 4 moderate, all one `esbuild` advisory through `drizzle-kit`'s `@esbuild-kit/*`; report it too |
 
 ## 4. Regression suite
 
@@ -296,33 +302,36 @@ so in the report.
 
 ## 5. Baseline
 
-Measured on 2026-10-24 at commit `ddbfabe` (branch `claude/fervent-bell-wcmmdu`),
-with the uncommitted changes listed in `.claude/test-runs/20261024-155200-agtci-tester.md`.
+Measured on 2026-10-24 at commit `f00359d` (branch `claude/fervent-bell-wcmmdu`),
+with the uncommitted changes listed in `.claude/test-runs/20261024-195800-agtci-tester.md`
+(`next` and `eslint-config-next` 16.4.3, `npm audit fix`, the smoke.mjs name guard).
 Environment: the agent's Linux container (4 shared CPUs), Node 22.22.0,
 npm 10.9.4, PostgreSQL 16.15. N ran against PgBouncer 1.22 (transaction mode,
 TLS required, `max_prepared_statements=1000`) and a local CA. The role was
 `t_agtci`: not a superuser, a member of `neon_superuser`, owner of `t_agtci` and
-`t_agtci_app`.
+`t_agtci_app`. After a container restart the shared server served a snakeoil
+certificate, so N ran on the agent's own PostgreSQL 16.15 (127.0.0.1:5442, the
+local CA's certificate) and PgBouncer (127.0.0.1:6442); the report has the
+details.
 
-The first and final complete runs gave the same counts. The first run already
-included the fixes for the defects found on `ddbfabe` as merged; the report
-lists those. The durations are from the final run.
+The last two complete runs gave the same counts, and the counts are unchanged
+from the previous baseline. The durations are from the final run.
 
 | # | Level | Checks | Passed | Failed | Skipped / N/A | Duration |
 |---|---|---|---|---|---|---|
-| 1 | S1 install | 1 | 1 | 0 | 0 | 23 s |
-| 2 | S1 lint | 1 | 1 | 0 | 0 | 3 s |
-| 3 | S1 typecheck | 1 | 1 | 0 | 0 | 6 s |
+| 1 | S1 install | 1 | 1 | 0 | 0 | 29 s |
+| 2 | S1 lint | 1 | 1 | 0 | 0 | 4 s |
+| 3 | S1 typecheck | 1 | 1 | 0 | 0 | 4 s |
 | 4 | S1 static (ST-01 to ST-05) | 5 | 5 | 0 | 0 | <1 s |
 | 5 | S2 unit | 0 | 0 | 0 | N/A (no runner) | — |
 | 6 | S3 `db-check.mjs` | 23 | 23 | 0 | 0 | 4 s |
-| 7 | S4 build | 1 | 1 | 0 | 0 | 6 s with `.next/cache` warm, about 20 s cold |
+| 7 | S4 build | 1 | 1 | 0 | 0 | 7 s with `.next/cache` warm, about 18 s cold |
 | 8 | S5 smoke `--terminate` | 14 | 14 | 0 | 0 | 4 s |
 | 9 | S5 smoke `--db-down` | 10 | 10 | 0 | 0 | 1 s |
-| 10 | S6 hygiene | 4 | 4 | 0 | 1 N/A (no protected routes); audit report-only: 4 advisories | 3 s |
+| 10 | S6 hygiene | 4 | 4 | 0 | 1 N/A (no protected routes); audit report-only: 0 advisories (`--omit=dev`) | 1 s |
 | 11 | N1 `db-check --neon`, direct TLS | 25 | 25 | 0 | 0 | 5 s |
 | 12 | N2 `db-check --probes-only --neon`, pooled TLS | 18 | 18 | 0 | 0 | <1 s |
-| 13 | N3 smoke, pooled TLS | 13 | 13 | 0 | 0 | 5 s |
+| 13 | N3 smoke, pooled TLS | 13 | 13 | 0 | 0 | 4 s |
 | 14 | N4 smoke, direct TLS | 14 | 14 | 0 | 0 | 4 s |
 
 The whole suite takes about 75 s. Expected `N/A`s:
@@ -373,8 +382,8 @@ docs. Each fix must be the smallest correct one, at the root cause, with a check
 added to `db-check.mjs` or `smoke.mjs` when the existing ones missed it.
 
 **The agent reports instead:**
-- dependency upgrades outside the declared semver range (for example the
-  `next` fix that needs 16.4.x);
+- dependency upgrades outside the declared semver range (for example
+  ESLint 10, or the fix for `drizzle-kit`'s `esbuild` advisory);
 - anything needing Neon, a deployed tier or a credential;
 - changes to `.claude/settings.json`, `.claude/hooks/`, `.claude/test-gate.json`,
   `.gitignore`, `CLAUDE.md` or `AGENTS.md`;
@@ -476,5 +485,6 @@ VERDICT: PASS | FAIL | BLOCKED
   itself. When it is upgraded, switch the Neon URLs to `sslmode=verify-full`,
   or keep verification some other way. TLS-02 will catch the change.
 - **No load, concurrency or pool-exhaustion tests.**
-- **The dependency audit is report-only.** The `next` critical advisory needs a
-  minor upgrade outside the pinned version (see the latest report).
+- **The dependency audit is report-only.** The production audit is clean. The
+  dev-only `esbuild` advisory (through `drizzle-kit`) has no fix in range;
+  `npm audit fix --force` would downgrade `drizzle-kit` to 0.18 (see the latest report).

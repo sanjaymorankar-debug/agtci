@@ -11,7 +11,8 @@
  *
  * Environment:
  *   DATABASE_URL           the app's runtime URL (Neon: the pooled one); must be on this machine,
- *                          and the database must be migrated
+ *                          and the database must be migrated; agtci, bk_agtci and names ending in
+ *                          _dev, _test, _prod or _production are refused, as in db-check.mjs
  *   DATABASE_URL_UNPOOLED  optional; the direct URL, used to terminate the app's connections
  *   SMOKE_PORT             default 3104
  *
@@ -56,6 +57,12 @@ function localUrl(name) {
   }
   const host = u.hostname.replace(/^\[|\]$/g, "");
   if (!["127.0.0.1", "localhost", "::1"].includes(host)) die(`refusing ${name} on ${host}: only a database on this machine.`);
+  // The same names db-check.mjs refuses: --terminate kills the role's other
+  // sessions on this database, so it must be a scratch one.
+  const database = decodeURIComponent(u.pathname.slice(1));
+  if (!database || database === "agtci" || database === "bk_agtci" || /_(dev|test|prod|production)$/.test(database)) {
+    die(`refusing ${name} database "${database}": use a scratch database such as agtci_scratch.`);
+  }
   return u;
 }
 
