@@ -1,5 +1,5 @@
 {
-  "id": "b62b37f5-4057-48fa-ae3e-cda35d8ece1a",
+  "id": "0f5f7801-07ca-457a-81ea-e7f319903eb9",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -17,19 +17,19 @@
         },
         "email": {
           "name": "email",
-          "type": "text",
+          "type": "varchar(255)",
           "primaryKey": false,
           "notNull": true
         },
         "name": {
           "name": "name",
-          "type": "text",
+          "type": "varchar(255)",
           "primaryKey": false,
           "notNull": false
         },
         "password_hash": {
           "name": "password_hash",
-          "type": "text",
+          "type": "varchar(255)",
           "primaryKey": false,
           "notNull": true
         },
@@ -54,9 +54,9 @@
           "name": "admin_users_email_unique",
           "columns": [
             {
-              "expression": "email",
-              "isExpression": false,
+              "expression": "lower(\"email\")",
               "asc": true,
+              "isExpression": true,
               "nulls": "last"
             }
           ],
@@ -92,19 +92,19 @@
         },
         "action": {
           "name": "action",
-          "type": "text",
+          "type": "varchar(255)",
           "primaryKey": false,
           "notNull": true
         },
         "entity_type": {
           "name": "entity_type",
-          "type": "text",
+          "type": "varchar(100)",
           "primaryKey": false,
           "notNull": true
         },
         "entity_id": {
           "name": "entity_id",
-          "type": "text",
+          "type": "varchar(255)",
           "primaryKey": false,
           "notNull": false
         },
@@ -140,6 +140,21 @@
             },
             {
               "expression": "entity_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "audit_logs_actor_idx": {
+          "name": "audit_logs_actor_idx",
+          "columns": [
+            {
+              "expression": "actor_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -185,13 +200,13 @@
         },
         "name": {
           "name": "name",
-          "type": "text",
+          "type": "varchar(255)",
           "primaryKey": false,
           "notNull": true
         },
         "slug": {
           "name": "slug",
-          "type": "text",
+          "type": "varchar(255)",
           "primaryKey": false,
           "notNull": true
         },
@@ -203,7 +218,7 @@
         },
         "image_url": {
           "name": "image_url",
-          "type": "text",
+          "type": "varchar(1000)",
           "primaryKey": false,
           "notNull": false
         },
@@ -273,13 +288,13 @@
         },
         "slug": {
           "name": "slug",
-          "type": "text",
+          "type": "varchar(100)",
           "primaryKey": false,
           "notNull": true
         },
         "name": {
           "name": "name",
-          "type": "text",
+          "type": "varchar(255)",
           "primaryKey": false,
           "notNull": true
         },
@@ -356,31 +371,31 @@
         },
         "full_name": {
           "name": "full_name",
-          "type": "text",
+          "type": "varchar(255)",
           "primaryKey": false,
           "notNull": true
         },
         "company_name": {
           "name": "company_name",
-          "type": "text",
+          "type": "varchar(255)",
           "primaryKey": false,
           "notNull": false
         },
         "country": {
           "name": "country",
-          "type": "text",
+          "type": "varchar(100)",
           "primaryKey": false,
           "notNull": false
         },
         "email": {
           "name": "email",
-          "type": "text",
+          "type": "varchar(255)",
           "primaryKey": false,
           "notNull": true
         },
         "phone": {
           "name": "phone",
-          "type": "text",
+          "type": "varchar(50)",
           "primaryKey": false,
           "notNull": false
         },
@@ -392,13 +407,13 @@
         },
         "product_name_snapshot": {
           "name": "product_name_snapshot",
-          "type": "text",
+          "type": "varchar(255)",
           "primaryKey": false,
           "notNull": false
         },
         "quantity": {
           "name": "quantity",
-          "type": "text",
+          "type": "varchar(255)",
           "primaryKey": false,
           "notNull": false
         },
@@ -416,25 +431,25 @@
         },
         "packaging": {
           "name": "packaging",
-          "type": "text",
+          "type": "varchar(255)",
           "primaryKey": false,
           "notNull": false
         },
         "destination_country": {
           "name": "destination_country",
-          "type": "text",
+          "type": "varchar(100)",
           "primaryKey": false,
           "notNull": false
         },
         "target_price": {
           "name": "target_price",
-          "type": "text",
+          "type": "varchar(255)",
           "primaryKey": false,
           "notNull": false
         },
         "delivery_timeline": {
           "name": "delivery_timeline",
-          "type": "text",
+          "type": "varchar(255)",
           "primaryKey": false,
           "notNull": false
         },
@@ -529,6 +544,36 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "leads_product_idx": {
+          "name": "leads_product_idx",
+          "columns": [
+            {
+              "expression": "product_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "leads_assigned_to_idx": {
+          "name": "leads_assigned_to_idx",
+          "columns": [
+            {
+              "expression": "assigned_to",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -584,13 +629,13 @@
         },
         "name": {
           "name": "name",
-          "type": "text",
+          "type": "varchar(255)",
           "primaryKey": false,
           "notNull": true
         },
         "slug": {
           "name": "slug",
-          "type": "text",
+          "type": "varchar(255)",
           "primaryKey": false,
           "notNull": true
         },
@@ -615,7 +660,7 @@
         },
         "origin": {
           "name": "origin",
-          "type": "text",
+          "type": "varchar(255)",
           "primaryKey": false,
           "notNull": false
         },
@@ -635,7 +680,7 @@
         },
         "moq": {
           "name": "moq",
-          "type": "text",
+          "type": "varchar(255)",
           "primaryKey": false,
           "notNull": false
         },
@@ -689,25 +734,25 @@
         },
         "seo_title": {
           "name": "seo_title",
-          "type": "text",
+          "type": "varchar(255)",
           "primaryKey": false,
           "notNull": false
         },
         "seo_description": {
           "name": "seo_description",
-          "type": "text",
+          "type": "varchar(500)",
           "primaryKey": false,
           "notNull": false
         },
         "seo_keywords": {
           "name": "seo_keywords",
-          "type": "text",
+          "type": "varchar(500)",
           "primaryKey": false,
           "notNull": false
         },
         "og_image_url": {
           "name": "og_image_url",
-          "type": "text",
+          "type": "varchar(1000)",
           "primaryKey": false,
           "notNull": false
         },
@@ -822,13 +867,13 @@
         },
         "title": {
           "name": "title",
-          "type": "text",
+          "type": "varchar(255)",
           "primaryKey": false,
           "notNull": true
         },
         "slug": {
           "name": "slug",
-          "type": "text",
+          "type": "varchar(255)",
           "primaryKey": false,
           "notNull": true
         },
@@ -840,7 +885,7 @@
         },
         "icon": {
           "name": "icon",
-          "type": "text",
+          "type": "varchar(100)",
           "primaryKey": false,
           "notNull": false
         },
@@ -889,7 +934,7 @@
       "columns": {
         "key": {
           "name": "key",
-          "type": "text",
+          "type": "varchar(100)",
           "primaryKey": true,
           "notNull": true
         },

@@ -1,9 +1,12 @@
 name: CI
 
-# Runs on every push and pull request to staging and main. There are no tests
-# yet, so this guards what can break a deploy: migrations that don't apply to a
-# fresh PostgreSQL database, a schema that has drifted from its migrations,
-# lint/type errors, and a failing production build.
+# Runs on every push and pull request to staging and main: the standard suite
+# from TEST_SPEC.md that needs no hosted service. Lint, typecheck, the
+# database checks (migrations apply to an empty PostgreSQL and match
+# schema.ts), the production build and a smoke run of it.
+#
+# The database is the PostgreSQL 16 service below. CI never connects to Neon,
+# and no Neon URL or secret belongs in this file.
 on:
   push:
     branches: [main, staging]
@@ -16,6 +19,11 @@ jobs:
 
     services:
       postgres:
+        # Docker Hub's official image, the one bkesari-platform's CI uses. This
+        # was public.ecr.aws/docker/library/postgres:16 to dodge Docker Hub's
+        # anonymous rate limit, until ECR Public refused every pull with "Data
+        # limit exceeded" (2026-10-24). If Docker Hub's limit bites again,
+        # mirror.gcr.io/library/postgres:16 is the next mirror to try.
         image: postgres:16
         env:
           POSTGRES_USER: ci
@@ -43,23 +51,22 @@ jobs:
 
       - run: npm ci
 
-      - name: Apply migrations to a fresh database
-        run: npm run db:migrate
-
-      - name: Schema and migrations are in sync
-        run: |
-          npx drizzle-kit generate
-          if [ -n "$(git status --porcelain drizzle)" ]; then
-            echo "src/server/db/schema.ts has changes with no migration. Run 'npm run db:generate' and commit the result."
-            git status --porcelain drizzle
-            exit 1
-          fi
-
       - name: Lint
         run: npm run lint
 
+      # LayoutProps and the other route types are generated, not committed.
       - name: Typecheck
         run: npx next typegen && npx tsc --noEmit
 
+      # Applies the migrations to the empty service database (twice), compares
+      # the result with schema.ts and the snapshot, and runs the behaviour probes.
+      - name: Database checks
+        run: node scripts/db-check.mjs
+
+      # Without the database settings: nothing may connect to a database at
+      # build time (the pool is created on the first request).
       - name: Production build
-        run: npm run build
+        run: env -u DATABASE_URL -u AUTH_SECRET npm run build
+
+      - name: Smoke run
+        run: node scripts/smoke.mjs --terminate

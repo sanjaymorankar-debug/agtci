@@ -4,10 +4,22 @@
  */
 import { z } from "zod";
 
+// Catches a .env still holding the old mysql:// URL before pg reports something obscure.
+const postgresUrl = /^postgres(ql)?:\/\//;
+
 const serverEnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
 
-  DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
+  // Neon: DATABASE_URL is the pooled endpoint (runtime), DATABASE_URL_UNPOOLED
+  // the direct one (migrations). Locally and in CI, DATABASE_URL alone is fine.
+  DATABASE_URL: z
+    .string()
+    .min(1, "DATABASE_URL is required")
+    .regex(postgresUrl, "DATABASE_URL must be a postgres:// or postgresql:// URL"),
+  DATABASE_URL_UNPOOLED: z
+    .string()
+    .regex(postgresUrl, "DATABASE_URL_UNPOOLED must be a postgres:// or postgresql:// URL")
+    .optional(),
 
   AUTH_SECRET: z.string().min(1, "AUTH_SECRET is required"),
   AUTH_URL: z.string().url().optional(),

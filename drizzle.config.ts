@@ -6,6 +6,7 @@ export default defineConfig({
   out: "./drizzle",
   dialect: "postgresql",
   dbCredentials: {
-    url: process.env.DATABASE_URL!,
+    // drizzle-kit changes the schema, so it uses the direct endpoint on Neon.
+    url: (process.env.DATABASE_URL_UNPOOLED || process.env.DATABASE_URL)!,
   },
 });
