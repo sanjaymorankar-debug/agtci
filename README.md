@@ -60,45 +60,55 @@ npm run db:migrate              # applies drizzle/ to that database
 ## Tests
 
 ```bash
-npm test        # 15 tests; no database needed, the 8 schema tests skip
+npm test        # 17 tests; no database needed, the 10 schema tests skip
 npm run lint
 ```
 
 `npm test` works on a fresh clone. The environment-validation tests need
 nothing; the schema tests skip themselves with a reason.
 
-Those schema tests are the ones worth running. `src/server/db/schema.ts` (what
-the app queries through) and `drizzle/*.sql` (what actually built the database)
-are two artefacts kept in step only by remembering to run `npm run
-db:generate`. A column renamed in one and not the other typechecks perfectly
-and fails at runtime with "Unknown column". To catch that, point them at a
-throwaway MySQL:
+To run those too, point them at a throwaway PostgreSQL:
 
 ```bash
 cp .env.test.example .env.test  # defaults match the local devstack
-npm run test:db                 # all 15, nothing skipped
+npm run test:db                 # all 17, nothing skipped
 ```
 
-They apply the committed migrations to an empty database exactly as
-`db:migrate` does, then write and read every table through the schema, checking
-the declared defaults, the unique and foreign-key constraints, the `json`
-columns, and that every value in `LEAD_STATUSES` / `LEAD_SOURCES` exists in its
-column's enum. `site_content` gets its own case because `key` is a MySQL
-reserved word.
+### What these cover that CI's schema steps do not
 
-> `TEST_DATABASE_URL`, deliberately not `DATABASE_URL`: these tests **drop
-> every table** in the target database. They must not be able to pick up a
-> development database from a `.env` by accident.
+CI already applies the migrations to a fresh database and runs `drizzle-kit
+generate`, failing if that produces a diff. Between them those prove the
+migrations apply and that `src/server/db/schema.ts` has not drifted from them.
+Both compare files and DDL; neither runs a query.
 
-CI runs both — the server-free tests in the `build` job, the schema tests in
-`db-mysql` against a real MySQL 8.0 service, which fails if any case skips.
+The tests add what that leaves out — that the ORM can read and write every
+table against the migrated database, that the defaults and constraints
+declared in the schema exist in it rather than only in TypeScript, and that
+the enum types refuse a value outside their list. A column renamed in the
+schema and regenerated correctly satisfies both CI checks and still breaks
+every query naming the old one.
+
+Two are PostgreSQL-specific:
+
+- **`timestamptz` keeps the instant across a session time-zone change.** Only
+  the rendered text moves (`+05:30` under `Asia/Kolkata`). That is the whole
+  point of `withTimezone: true`, and swapping the column to a naive
+  `timestamp` is caught by this test and no other.
+- **The enum columns are real named types, not text.** Replace one with a
+  plain `text` column and every other test still passes — the ORM accepts the
+  same values — while the database quietly stops refusing bad ones.
+
+> `TEST_DATABASE_URL`, deliberately not `DATABASE_URL`: these tests
+> **`DROP SCHEMA public CASCADE`** on whatever they are pointed at. They must
+> not be able to pick up a development database by accident.
+
+Resetting that database drops the `drizzle` schema as well as `public`: the
+`pgEnum` types outlive their tables, so the next `CREATE TYPE` would fail, and
+drizzle records applied migrations outside `public` so leaving it would make
+`migrate()` decide there is nothing to do.
 
 The test setup adds no dependencies: Node's own test runner, loaded through the
 `tsx` that `db:migrate` already uses.
-
-Note that `npx tsc --noEmit` does not work on a fresh clone — `layout.tsx` uses
-`LayoutProps`, a type Next generates into `.next/types` during a build. Run
-`npm run build`, which typechecks, instead.
 
 ## Branches and promotion
 
