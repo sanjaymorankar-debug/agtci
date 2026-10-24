@@ -55,10 +55,11 @@ PostgreSQL 16.15.
 
 **Scratch databases.** These are PostgreSQL databases on this machine only,
 owned by a scratch role that is **not** a superuser. **They are dropped and
-recreated by this suite. Never point it at a database you care about.** The
-scripts refuse any host other than `127.0.0.1`, `localhost` or `::1`, a
-database named `agtci`, and names ending in `_dev`, `_test`, `_prod` or
-`_production`.
+recreated by this suite. Never point it at a database you care about.** Both
+scripts refuse any host other than `127.0.0.1`, `localhost` or `::1`.
+`db-check.mjs`, which migrates the database it is given, also refuses a
+database named `agtci` or `bk_agtci` (the Neon name), and names ending in
+`_dev`, `_test`, `_prod` or `_production`.
 
 | Name (Mac) | Used by | Note |
 |---|---|---|
@@ -296,7 +297,7 @@ so in the report.
 ## 5. Baseline
 
 Measured on 2026-10-24 at commit `ddbfabe` (branch `claude/fervent-bell-wcmmdu`),
-with the uncommitted changes listed in `.claude/test-runs/latest-agtci-tester.md`.
+with the uncommitted changes listed in `.claude/test-runs/20261024-155200-agtci-tester.md`.
 Environment: the agent's Linux container (4 shared CPUs), Node 22.22.0,
 npm 10.9.4, PostgreSQL 16.15. N ran against PgBouncer 1.22 (transaction mode,
 TLS required, `max_prepared_statements=1000`) and a local CA. The role was

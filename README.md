@@ -49,7 +49,7 @@ After changing `schema.ts`, run `npm run db:generate` to create a new migration,
 
 ### Neon
 
-agtci.com is a separate site from bkesari.com, but its database lives in the same Neon project: its own database `agtci`, owned by its own role `agtci_app`, on every Neon branch. The role is a member of `neon_superuser`, so it can run the migrations without a superuser.
+agtci.com is a separate site from bkesari.com, but its database lives in the same Neon project: its own database `bk_agtci`, owned by its own role `bk_agtci_app`, on every Neon branch (bkesari-platform's `docs/NEON.md` and `tools/neon_provision.mjs` create them). The role is a member of `neon_superuser`, so it can run the migrations without a superuser.
 
 | Neon branch | Site | Git branch |
 |---|---|---|
@@ -57,7 +57,7 @@ agtci.com is a separate site from bkesari.com, but its database lives in the sam
 | `test` | the staging subdomain | `staging` |
 | `dev` | development, when not using a local PostgreSQL | feature branches |
 
-Get the URLs from the Neon console: select the branch, then **Connect**, database `agtci`, role `agtci_app`. With **Connection pooling** on, the string (host contains `-pooler`) goes in `DATABASE_URL`; with it off, the direct string goes in `DATABASE_URL_UNPOOLED`. Keep the `?sslmode=require&channel_binding=require` they end with: TLS is mandatory and the certificate is verified. Each tier's server `.env` holds only that tier's two URLs.
+Get the URLs from the Neon console: select the branch, then **Connect**, database `bk_agtci`, role `bk_agtci_app`. With **Connection pooling** on, the string (host contains `-pooler`) goes in `DATABASE_URL`; with it off, the direct string goes in `DATABASE_URL_UNPOOLED`. Keep the `?sslmode=require&channel_binding=require` they end with: TLS is mandatory and the certificate is verified. Each tier's server `.env` holds only that tier's two URLs.
 
 Why two: the pooler (PgBouncer in transaction mode) is for the app's short queries; migrations and anything that needs a session of its own (advisory locks, `LISTEN`, session `SET`) use the direct endpoint. Neon suspends an idle compute and closes its connections; the pool logs that and reconnects on the next query, and its connect timeout (15 s) leaves room for the compute to wake up. `pg` 8 prints a one-time warning that `sslmode=require` is treated as `verify-full`; that is the behaviour we want.
 

@@ -58,7 +58,7 @@ const host = target.hostname.replace(/^\[|\]$/g, "");
 const database = decodeURIComponent(target.pathname.slice(1));
 if (!/^postgres(ql)?:$/.test(target.protocol)) die("not a postgres:// URL.");
 if (!["127.0.0.1", "localhost", "::1"].includes(host)) die(`refusing ${host}: only a database on this machine.`);
-if (!database || database === "agtci" || /_(dev|test|prod|production)$/.test(database)) {
+if (!database || database === "agtci" || database === "bk_agtci" || /_(dev|test|prod|production)$/.test(database)) {
   die(`refusing database "${database}": use a scratch database such as agtci_scratch.`);
 }
 const sslmode = target.searchParams.get("sslmode");
